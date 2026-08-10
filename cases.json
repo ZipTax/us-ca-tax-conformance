@@ -1,0 +1,166 @@
+{
+  "$comment": "Vendor-neutral conformance cases for US (California) sales tax rate resolution. No dependency on any tax provider. See README.md for provenance and regeneration.",
+  "meta": {
+    "name": "us-ca-tax-conformance",
+    "version": "0.1.0",
+    "license": "CC0-1.0",
+    "jurisdiction_scope": "US-CA",
+    "source_authority": "California Department of Tax and Fee Administration (CDTFA)",
+    "source_dataset": "CDTFA_SalesandUseTaxRates_Public, layer 1",
+    "source_url": "https://data.ca.gov/dataset/cdtfa-salesandusetaxrates-public",
+    "source_service": "https://services6.arcgis.com/snwvZ3EmaoXJiugR/arcgis/rest/services/California_Sales_and_Use_Tax_Rates/FeatureServer/1",
+    "source_rights": "No restrictions on public use",
+    "rates_effective": "2026-07-01",
+    "annexations_filed_through": "2026-05-01",
+    "source_last_published": "2026-06-15",
+    "retrieved": "2026-08-10",
+    "rate_representation": {
+      "unit": "basis_points",
+      "note": "combined_bp is the CDTFA combined rate expressed in basis points. Rates ending in .5 bp are real and are the reason an integer basis-point field is insufficient. See case half-basis-point-rates.",
+      "source_unit": "decimal fraction (float64) in the CDTFA RATE field"
+    },
+    "known_limitations": [
+      "CDTFA's public layer publishes the COMBINED rate per jurisdiction only. It does not break out the state, county, and district components. Cases here therefore assert combined rates, not component splits. Anyone needing components should use CDTFA-105 (District Sales and Use Tax Rates) as the authority.",
+      "Cases assert at the jurisdiction level, not the rooftop address level. Adding street addresses requires a point-in-polygon geocode against the source geometry, which this file deliberately does not assert because it cannot be verified from the attribute data alone. See README 'Extending to rooftop'.",
+      "California is not a Streamlined Sales Tax member state, so SST boundary and rate files do not cover it. CDTFA is the only primary source."
+    ]
+  },
+  "cases": [
+    {
+      "id": "enclave-piedmont-in-oakland",
+      "assertion": "A jurisdiction fully enclosed by another jurisdiction must not inherit the surrounding rate.",
+      "why_it_matters": "Piedmont is a city entirely surrounded by Oakland. Any resolver that falls back to the nearest large city, the postal city name, or a ZIP centroid will return Oakland's rate for a Piedmont address and under- or over-collect by 50 bp.",
+      "county": "ALAMEDA",
+      "jurisdictions": [
+        { "juris_name": "PIEDMONT", "combined_bp": 1025 },
+        { "juris_name": "OAKLAND", "combined_bp": 1075 }
+      ],
+      "delta_bp": 50,
+      "failure_mode": "silent_wrong_rate"
+    },
+    {
+      "id": "three-rates-within-two-miles",
+      "assertion": "Three distinct combined rates can apply within a few square miles of contiguous urban area.",
+      "why_it_matters": "Emeryville, Oakland and Berkeley are directly adjacent. A resolver keyed to metro area, county, or a coarse geocode cannot distinguish them.",
+      "county": "ALAMEDA",
+      "jurisdictions": [
+        { "juris_name": "BERKELEY", "combined_bp": 1025 },
+        { "juris_name": "EMERYVILLE", "combined_bp": 1050 },
+        { "juris_name": "OAKLAND", "combined_bp": 1075 }
+      ],
+      "min_gap_bp": 25,
+      "spread_bp": 50,
+      "failure_mode": "silent_wrong_rate"
+    },
+    {
+      "id": "adjacent-culver-city-vs-los-angeles",
+      "assertion": "Adjacent incorporated cities can differ by 100 bp.",
+      "why_it_matters": "Culver City is almost entirely surrounded by the City of Los Angeles. A full percentage point of tax turns on which side of a municipal line an address sits, inside what looks like one postal metro.",
+      "county": "LOS ANGELES",
+      "jurisdictions": [
+        { "juris_name": "CULVER CITY", "combined_bp": 1075 },
+        { "juris_name": "LOS ANGELES", "combined_bp": 975 }
+      ],
+      "delta_bp": 100,
+      "failure_mode": "silent_wrong_rate"
+    },
+    {
+      "id": "adjacent-santa-monica-vs-los-angeles",
+      "assertion": "Adjacent incorporated cities can differ by 100 bp.",
+      "why_it_matters": "Second independent instance of the same 100 bp municipal-boundary problem, on a different border of the same city.",
+      "county": "LOS ANGELES",
+      "jurisdictions": [
+        { "juris_name": "SANTA MONICA", "combined_bp": 1075 },
+        { "juris_name": "LOS ANGELES", "combined_bp": 975 }
+      ],
+      "delta_bp": 100,
+      "failure_mode": "silent_wrong_rate"
+    },
+    {
+      "id": "enclave-west-hollywood-in-los-angeles",
+      "assertion": "A second enclave city, on shared postal ZIP territory, carries a different rate.",
+      "why_it_matters": "West Hollywood is surrounded by the City of Los Angeles and shares ZIP prefixes with it. This is the case where ZIP-level resolution is not merely imprecise but has no correct answer.",
+      "county": "LOS ANGELES",
+      "jurisdictions": [
+        { "juris_name": "WEST HOLLYWOOD", "combined_bp": 1050 },
+        { "juris_name": "LOS ANGELES", "combined_bp": 975 }
+      ],
+      "delta_bp": 75,
+      "failure_mode": "zip_has_no_single_correct_answer"
+    },
+    {
+      "id": "unincorporated-vs-incorporated-alameda",
+      "assertion": "Unincorporated county area carries a different rate from the cities inside the same county.",
+      "why_it_matters": "Addresses in unincorporated territory often carry a nearby city's postal name. Resolving on the mailing city produces the city rate for an address the city does not tax.",
+      "county": "ALAMEDA",
+      "jurisdictions": [
+        { "juris_name": "UNINCORPORATED AREA-ALAMEDA", "combined_bp": 1025 },
+        { "juris_name": "HAYWARD", "combined_bp": 1075 },
+        { "juris_name": "SAN LEANDRO", "combined_bp": 1075 }
+      ],
+      "delta_bp": 50,
+      "failure_mode": "postal_city_is_not_tax_jurisdiction"
+    },
+    {
+      "id": "intra-county-spread-los-angeles",
+      "assertion": "A single county contains a 150 bp spread of combined rates.",
+      "why_it_matters": "Any model that stores one rate per county, or per state plus county, cannot represent Los Angeles County. 89 jurisdictions, at least six distinct combined rates.",
+      "county": "LOS ANGELES",
+      "jurisdiction_count": 89,
+      "min_bp": 975,
+      "max_bp": 1125,
+      "delta_bp": 150,
+      "examples": [
+        { "juris_name": "LOS ANGELES", "combined_bp": 975 },
+        { "juris_name": "UNINCORPORATED AREA-LOS ANGELES", "combined_bp": 975 },
+        { "juris_name": "INGLEWOOD", "combined_bp": 1025 },
+        { "juris_name": "PASADENA", "combined_bp": 1050 },
+        { "juris_name": "COMPTON", "combined_bp": 1075 },
+        { "juris_name": "SANTA FE SPRINGS", "combined_bp": 1100 },
+        { "juris_name": "LANCASTER", "combined_bp": 1125 },
+        { "juris_name": "PALMDALE", "combined_bp": 1125 }
+      ],
+      "failure_mode": "county_level_model_insufficient"
+    },
+    {
+      "id": "half-basis-point-rates",
+      "assertion": "61 California jurisdictions have a combined rate that is not a whole number of basis points.",
+      "why_it_matters": "An integer basis-point field cannot store these. 8.625 percent is 862.5 bp; 862 understates and 863 overstates. This is not an edge case, it is 61 jurisdictions in one state, including the City and County of San Francisco and most of San Mateo County. A rate field needs finer granularity than basis points, for example parts per million (8.625 percent is exactly 86250 ppm), with headroom beyond today's worst case.",
+      "affected_jurisdiction_count": 61,
+      "affected_counties": ["FRESNO", "MENDOCINO", "NEVADA", "SAN FRANCISCO", "SAN MATEO", "SANTA CLARA", "SOLANO", "STANISLAUS"],
+      "examples": [
+        { "juris_name": "SAN FRANCISCO", "county": "SAN FRANCISCO", "combined_bp": 862.5, "combined_ppm": 86250 },
+        { "juris_name": "UNINCORPORATED AREA-SAN MATEO", "county": "SAN MATEO", "combined_bp": 937.5, "combined_ppm": 93750 },
+        { "juris_name": "DALY CITY", "county": "SAN MATEO", "combined_bp": 987.5, "combined_ppm": 98750 },
+        { "juris_name": "SAN MATEO", "county": "SAN MATEO", "combined_bp": 962.5, "combined_ppm": 96250 },
+        { "juris_name": "UNINCORPORATED AREA-SOLANO", "county": "SOLANO", "combined_bp": 737.5, "combined_ppm": 73750 },
+        { "juris_name": "MENDOTA", "county": "FRESNO", "combined_bp": 922.5, "combined_ppm": 92250 },
+        { "juris_name": "SANGER", "county": "FRESNO", "combined_bp": 872.5, "combined_ppm": 87250 },
+        { "juris_name": "SELMA", "county": "FRESNO", "combined_bp": 847.5, "combined_ppm": 84750 }
+      ],
+      "failure_mode": "rate_not_representable_in_integer_basis_points"
+    },
+    {
+      "id": "float-rate-multiplication-artifact",
+      "assertion": "Storing a rate as a binary float and scaling it produces a non-integer where an integer is expected.",
+      "why_it_matters": "CDTFA publishes RATE as a float64. 0.085 is not exactly representable in binary, so 0.085 * 10000 evaluates to 850.0000000000001, not 850. Three jurisdictions at exactly 8.5 percent therefore appear to be non-integer basis points when filtered arithmetically. Any ingestion path that derives an integer scaled rate by multiplying the published float must round explicitly rather than truncate, or it will produce 849 for a genuine 850 bp rate.",
+      "affected_jurisdictions": [
+        { "juris_name": "LA MESA", "county": "SAN DIEGO", "combined_bp": 850 },
+        { "juris_name": "DINUBA", "county": "TULARE", "combined_bp": 850 },
+        { "juris_name": "VISALIA", "county": "TULARE", "combined_bp": 850 }
+      ],
+      "expected_behaviour": "round(0.085 * 10000) == 850",
+      "wrong_behaviour": "floor(0.085 * 10000) == 850 only by luck; floor(rate * 1e4) is unsafe in general and trunc() of 849.9999... yields 849",
+      "failure_mode": "float_to_integer_conversion"
+    },
+    {
+      "id": "two-rate-quarters-live-simultaneously",
+      "assertion": "The authoritative source publishes two effective quarters at once; a resolver must select on effective date, not just fetch latest.",
+      "why_it_matters": "CDTFA's own dataset documentation states the feature contains data for two quarters that change at midnight Pacific on the quarter start date, and instructs consumers to filter with DateStamp = (SELECT MAX(DateStamp) WHERE DateStamp < CURRENT_DATE). A consumer that ignores DateStamp can silently read next quarter's rate before it is in effect, or last quarter's after. This is the effective-date bug at the source, before any provider is involved.",
+      "source_instruction": "DateStamp = (SELECT MAX(DateStamp) FROM CDTFA_SalesandUseTaxRates WHERE DateStamp < CURRENT_DATE)",
+      "expected_behaviour": "rate lookup is a function of (location, effective_date), never (location) alone",
+      "corollary": "A rate stored on an issued document must never be re-derived from a current lookup, because doing so retroactively changes a filed figure.",
+      "failure_mode": "missing_effective_date_dimension"
+    }
+  ]
+}
